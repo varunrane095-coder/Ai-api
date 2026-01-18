@@ -1,61 +1,56 @@
-const express = require("express");
-const fetch = require("node-fetch");
+import express from "express";
+import fetch from "node-fetch";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// CORS fix
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  next();
-});
-
 app.use(express.json());
 
-// HuggingFace token from Render (secure)
+const PORT = process.env.PORT || 3000;
 const HF_TOKEN = process.env.HF_TOKEN;
 
-// Health check
+// Home route (fixes Not Found)
 app.get("/", (req, res) => {
-  res.send("AI API is running");
+  res.send("AI API is running 🚀");
 });
 
-// Prompt → Image API
-app.post("/api/ai/generate-image", async (req, res) => {
-  const { prompt } = req.body;
-
-  if (!prompt || prompt.length < 5) {
-    return res.json({ error: "Prompt too short" });
-  }
-
+// Image generation route
+app.get("/generate", async (req, res) => {
   try {
+    const prompt = req.query.prompt;
+
+    if (!prompt) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
     const response = await fetch(
       "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${HF_TOKEN}`,
+          "Authorization": `Bearer ${HF_TOKEN}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ inputs: prompt })
+        body: JSON.stringify({
+          inputs: prompt
+        })
       }
     );
 
-    const buffer = await response.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(500).json({ error: text });
+    }
 
-    res.json({
-      image: `data:image/png;base64,${base64}`,
-      error: null
-    });
+    const buffer = await response.arrayBuffer();
+    const image = Buffer.from(buffer);
+
+    res.set("Content-Type", "image/png");
+    res.send(image);
 
   } catch (err) {
-    res.json({ error: "AI server error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log("AI API running on port " + PORT);
+  console.log("Server running on port " + PORT);
 });
